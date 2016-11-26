@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Remoting.Messaging;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.Extensions.CommandLineUtils;
@@ -22,6 +24,7 @@ namespace Meziantou.TfsBackup
                 var pathArg = command.Argument("path", "", multipleValues: false);
 
                 var scopeOption = command.Option("--scopePath", "", CommandOptionType.SingleValue);
+                var skipPackagesOption = command.Option("--skipPackages", "", CommandOptionType.NoValue);
 
                 command.OnExecute(() =>
                 {
@@ -34,7 +37,13 @@ namespace Meziantou.TfsBackup
                         return 1;
                     }
 
-                    DownloadAsync(baseUrl, rootFolder, scopeOption.Value() ?? "$/").Wait();
+                    Func<TfvcItem, bool> filter = item => true;
+                    if (skipPackagesOption.HasValue())
+                    {
+                        filter = item => !item.Path.Contains("/packages/");
+                    }
+                    
+                    DownloadAsync(baseUrl, rootFolder, scopeOption.Value() ?? "$/", filter).Wait();
                     return 0;
                 });
             });
@@ -43,7 +52,7 @@ namespace Meziantou.TfsBackup
             app.Execute(args);
         }
 
-        private static async Task DownloadAsync(string tfsUrl, string destinationFolder, string scope)
+        private static async Task DownloadAsync(string tfsUrl, string destinationFolder, string scope ,Func<TfvcItem, bool> filter)
         {
             var baseUrl = new Uri(tfsUrl);
             VssClientCredentials vssClientCredentials = new VssClientCredentials();
@@ -55,9 +64,8 @@ namespace Meziantou.TfsBackup
 
             try
             {
-                var items = await client.GetItemsAsync(scopePath: scope, recursionLevel: VersionControlRecursionType.Full, includeLinks: true).ConfigureAwait(false);
-
-                //var files = items.Select(item => item.Path).OrderBy(_ => _).ToList();
+                var items = await client.GetItemsAsync(scopePath: scope, recursionLevel: VersionControlRecursionType.Full, includeLinks: false).ConfigureAwait(false);
+                var files = items.Where(filter).OrderBy(_ => _.Path).ToList();
 
                 var transformBlock = new TransformBlock<TfvcItem, TfvcItem>(async item =>
                 {
@@ -91,12 +99,12 @@ namespace Meziantou.TfsBackup
 
                 var writePathBlock = new ActionBlock<TfvcItem>(c =>
                 {
-                    var index = items.IndexOf(c);
-                    Console.WriteLine($"{index}/{items.Count}: {c.Path}");
+                    var index = files.IndexOf(c);
+                    Console.WriteLine($"{index}/{files.Count}: {c.Path}");
                 });
                 transformBlock.LinkTo(writePathBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-                foreach (var item in items)
+                foreach (var item in files)
                 {
                     transformBlock.Post(item);
                 }

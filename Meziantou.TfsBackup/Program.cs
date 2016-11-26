@@ -21,6 +21,8 @@ namespace Meziantou.TfsBackup
                 var tfsArg = command.Argument("tfs", "", multipleValues: false);
                 var pathArg = command.Argument("path", "", multipleValues: false);
 
+                var scopeOption = command.Option("--scopePath", "", CommandOptionType.SingleValue);
+
                 command.OnExecute(() =>
                 {
                     var baseUrl = tfsArg.Value;
@@ -32,7 +34,7 @@ namespace Meziantou.TfsBackup
                         return 1;
                     }
 
-                    DownloadAsync(baseUrl, rootFolder).Wait();
+                    DownloadAsync(baseUrl, rootFolder, scopeOption.Value() ?? "$/").Wait();
                     return 0;
                 });
             });
@@ -41,7 +43,7 @@ namespace Meziantou.TfsBackup
             app.Execute(args);
         }
 
-        private static async Task DownloadAsync(string tfsUrl, string destinationFolder)
+        private static async Task DownloadAsync(string tfsUrl, string destinationFolder, string scope)
         {
             var baseUrl = new Uri(tfsUrl);
             VssClientCredentials vssClientCredentials = new VssClientCredentials();
@@ -53,7 +55,7 @@ namespace Meziantou.TfsBackup
 
             try
             {
-                var items = await client.GetItemsAsync(scopePath: "$/", recursionLevel: VersionControlRecursionType.Full, includeLinks: true).ConfigureAwait(false);
+                var items = await client.GetItemsAsync(scopePath: scope, recursionLevel: VersionControlRecursionType.Full, includeLinks: true).ConfigureAwait(false);
 
                 //var files = items.Select(item => item.Path).OrderBy(_ => _).ToList();
 

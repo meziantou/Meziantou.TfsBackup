@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.Remoting.Messaging;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -54,6 +55,9 @@ namespace Meziantou.TfsBackup
 
         private static async Task DownloadAsync(string tfsUrl, string destinationFolder, string scope ,Func<TfvcItem, bool> filter)
         {
+            int maxConcurrency = 8;
+
+            ServicePointManager.DefaultConnectionLimit = maxConcurrency;
             var baseUrl = new Uri(tfsUrl);
             VssClientCredentials vssClientCredentials = new VssClientCredentials();
             vssClientCredentials.Storage = new VssClientCredentialStorage();
@@ -95,7 +99,7 @@ namespace Meziantou.TfsBackup
                     }
 
                     return item;
-                }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 8 });
+                }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = maxConcurrency });
 
                 var writePathBlock = new ActionBlock<TfvcItem>(c =>
                 {
